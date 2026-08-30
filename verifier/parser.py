@@ -20,8 +20,18 @@ _PAT_COL_ARRAY = re.compile(
     r"(" + _COL_PAT + r")\s+array\s+\[([^\]]+)\]",
     re.IGNORECASE,
 )
-
 _WEEKS_ORDERED = ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"]
+
+# Bullet-style explicit formula/source line: "- Source: ..." / "- Formula: ..."
+_BULLET_FORMULA_RE = re.compile(
+    r"^[-*]\s*(?:source|formula)[:\s]+(.*)",
+    re.IGNORECASE | re.MULTILINE,
+)
+# Fallback: any bullet line containing "= <number>" (handles "- Description: expr = result")
+_BULLET_EQ_RE = re.compile(
+    r"^[-*]\s+.+=\s*\*{0,2}[+\-]?[\d,]+(?:\.\d+)?%?\*{0,2}",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 @dataclass
@@ -31,7 +41,8 @@ class SourceRef:
     value: Optional[float]
 
     def __str__(self) -> str:
-        parts = [p for p in [self.week, self.column, str(self.value) if self.value is not None else None] if p]
+        parts = [p for p in [self.week, self.column,
+                              str(self.value) if self.value is not None else None] if p]
         return " ".join(parts)
 
 
@@ -40,36 +51,123 @@ class Claim:
     label: str                              # VERIFIED | INFERENCE | ASSUMPTION
     text: str                               # full text after the label prefix
     source_refs: list[SourceRef] = field(default_factory=list)
-    formula_lhs: Optional[str] = None      # left side of "LHS = RHS"
-    formula_rhs: Optional[str] = None      # right side (the claimed result)
+    formula_lhs: Optional[str] = None      # arithmetic expression (left of =)
+    formula_rhs: Optional[str] = None      # claimed result (right of last =)
     parse_ok: bool = True                   # False when formula extraction failed
 
+
+# ---------------------------------------------------------------------------
+# Formula normalization
+# ---------------------------------------------------------------------------
+
+def _normalize_formula(s: str) -> str:
+    """Whole-formula normalization applied before splitting on '='."""
+    s = s.replace("−", "-")                                 # Unicode minus → ASCII
+    s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)               # **bold** → inner text
+    s = re.sub(r"[×xX]\s*$", "", s)                        # trailing × (ratio)
+    s = re.sub(r"\s+[a-zA-Z][a-zA-Z\s]*$", "", s.rstrip()) # trailing words like "increase"
+    return s.strip()
+
+
+def _normalize_segment(s: str) -> str:
+    """Per-segment normalization applied after splitting on '='."""
+    s = s.strip()
+    s = re.sub(r"\*+", "", s)                               # strip all stray * (bold artifacts)
+    s = s.lstrip("+")                                       # leading + (e.g. +8.3%)
+    s = re.sub(r"[×xX]\s*$", "", s)                        # trailing ×
+    s = re.sub(r"\s+[a-zA-Z][a-zA-Z\s]*$", "", s)          # trailing words
+    return s.rstrip(". ").strip()
+
+
+def _trim_to_arithmetic(s: str) -> Optional[str]:
+    """Extract arithmetic expression from a segment that may have a descriptive prefix.
+
+    Tries common separator patterns (→ arrow, ': ') to find where the
+    arithmetic expression starts.
+    """
+    # After → arrow  (e.g. "W1 vs W3 → (8000 - 5000) / 5000")
+    for arrow in ["→", "->"]:
+        idx = s.rfind(arrow)
+        if idx != -1:
+            cand = s[idx + len(arrow):].strip()
+            if cand and (cand[0].isdigit() or cand[0] in "(-"):
+                return cand
+
+    # After last ': '  (e.g. "Revenue growth: (5200-4800)/4800")
+    idx = s.rfind(": ")
+    if idx != -1:
+        cand = s[idx + 2:].strip()
+        if cand and (cand[0].isdigit() or cand[0] in "(-"):
+            return cand
+
+    # After last '. '  (e.g. "...W6 = $5200. Change: (expr)/base")
+    idx = s.rfind(". ")
+    if idx != -1:
+        cand = s[idx + 2:].strip()
+        if cand and (cand[0].isdigit() or cand[0] in "(-"):
+            return cand
+
+    # Whole segment is already arithmetic (starts with digit or open paren)
+    if s and (s[0].isdigit() or s[0] in "(-"):
+        return s
+
+    return None
+
+
+def _parse_calculation_multi(calc_text: str) -> tuple[Optional[str], Optional[str]]:
+    """Parse a formula string that may contain multiple '=' signs.
+
+    Handles chains like "A = B = C" (intermediate steps):
+    - Scans segments left-to-right for the first evaluatable arithmetic expression
+    - Uses the last segment as the claimed result (RHS)
+
+    Also handles:
+    - Unicode minus (−)
+    - Bold markdown (**value**)
+    - Trailing ×, trailing words like "increase"
+    - Descriptive prefixes before formulas (trimmed via _trim_to_arithmetic)
+    - Leading '+' in percent values
+    """
+    text = _normalize_formula(calc_text)
+    segments = [_normalize_segment(s) for s in text.split("=")]
+    segments = [s for s in segments if s]
+    if len(segments) < 2:
+        return None, None
+
+    rhs = segments[-1]
+
+    # Scan from left to find the first segment with an extractable arithmetic expression
+    for seg in segments[:-1]:
+        candidate = _trim_to_arithmetic(seg)
+        if candidate:
+            return candidate, rhs
+
+    return None, rhs
+
+
+# ---------------------------------------------------------------------------
+# Source ref parsing
+# ---------------------------------------------------------------------------
 
 def _parse_source_refs(source_text: str) -> list[SourceRef]:
     refs: list[SourceRef] = []
     seen: set[tuple] = set()
 
-    # Pattern 1: "W{n} {column} {value}"  e.g. "W2 push_sent 5200"
     for m in _PAT_WEEK_COL_VAL.finditer(source_text):
-        week = m.group(1).upper()
-        col = m.group(2).lower()
+        week, col = m.group(1).upper(), m.group(2).lower()
         val = float(m.group(3).replace(",", ""))
-        key = (week, col)
-        if key not in seen:
+        if (week, col) not in seen:
             refs.append(SourceRef(week=week, column=col, value=val))
-            seen.add(key)
+            seen.add((week, col))
 
-    # Pattern 2: "W{n}={value}"  e.g. "W1=4800" — only when pattern 1 found nothing
     if not refs:
         for m in _PAT_WEEK_EQ_VAL.finditer(source_text):
             week = m.group(1).upper()
             val = float(m.group(2).replace(",", ""))
-            key = (week, None)
-            if key not in seen:
+            if (week, None) not in seen:
                 refs.append(SourceRef(week=week, column=None, value=val))
-                seen.add(key)
+                seen.add((week, None))
 
-    # Pattern 3: "{column} array [v1, v2, ...]"  — always checked (Pearson claims)
     for m in _PAT_COL_ARRAY.finditer(source_text):
         col = m.group(1).lower()
         vals = [float(v.strip()) for v in m.group(2).split(",") if v.strip()]
@@ -83,45 +181,69 @@ def _parse_source_refs(source_text: str) -> list[SourceRef]:
     return refs
 
 
-def _parse_calculation(calc_text: str) -> tuple[Optional[str], Optional[str]]:
-    """Split 'LHS = RHS' on the last '=' sign."""
-    calc_text = calc_text.strip()
-    idx = calc_text.rfind("=")
-    if idx == -1:
-        return None, None
-    lhs = calc_text[:idx].strip()
-    rhs = calc_text[idx + 1:].strip()
-    return (lhs or None), (rhs or None)
-
+# ---------------------------------------------------------------------------
+# Formula extraction: two response formats
+# ---------------------------------------------------------------------------
 
 def _extract_verified_fields(
     text: str,
 ) -> tuple[list[SourceRef], Optional[str], Optional[str]]:
-    """Pull source_refs, formula_lhs, formula_rhs out of a [VERIFIED] claim."""
-    paren_m = _PAREN_RE.search(text)
-    if not paren_m:
-        return [], None, None
+    """Extract source_refs, formula_lhs, formula_rhs from a [VERIFIED] claim.
 
-    paren_content = paren_m.group(1)
-    parts = _CALC_SPLIT_RE.split(paren_content, maxsplit=1)
+    Format A — Gemini inline parenthetical (single line):
+        [VERIFIED] Text (source: W2 5100→W3 6200; calculation: (6200-5100)/5100 = 21.6%)
 
-    source_text = _SOURCE_PREFIX_RE.sub("", parts[0])
-    source_refs = _parse_source_refs(source_text)
-
+    Format B — Claude multi-line bullet (continuation lines):
+        [VERIFIED] Text
+        - Source: (a + b) / n = intermediate = result
+        - Formula: (x - y) / y = step = **pct%**
+        - Description: expr = result  (fallback: any bullet with '= number')
+    """
+    source_refs: list[SourceRef] = []
     formula_lhs = formula_rhs = None
-    if len(parts) > 1:
-        formula_lhs, formula_rhs = _parse_calculation(parts[1])
+
+    # ── Format A ──────────────────────────────────────────────────────────
+    paren_m = _PAREN_RE.search(text)
+    if paren_m:
+        paren_content = paren_m.group(1)
+        parts = _CALC_SPLIT_RE.split(paren_content, maxsplit=1)
+        source_text = _SOURCE_PREFIX_RE.sub("", parts[0])
+        source_refs = _parse_source_refs(source_text)
+        if len(parts) > 1:
+            formula_lhs, formula_rhs = _parse_calculation_multi(parts[1])
+
+    # ── Format B: explicit "- Source:" / "- Formula:" bullet ─────────────
+    if formula_lhs is None:
+        for m in _BULLET_FORMULA_RE.finditer(text):
+            lhs, rhs = _parse_calculation_multi(m.group(1))
+            if lhs and rhs:
+                formula_lhs, formula_rhs = lhs, rhs
+                break
+
+    # ── Format B fallback: any bullet line with "= <number>" ─────────────
+    if formula_lhs is None:
+        for m in _BULLET_EQ_RE.finditer(text):
+            lhs, rhs = _parse_calculation_multi(m.group(0).lstrip("-* "))
+            if lhs and rhs:
+                formula_lhs, formula_rhs = lhs, rhs
+                break
+
+    # Source refs: try full claim text if Format A didn't find any
+    if not source_refs:
+        source_refs = _parse_source_refs(text)
 
     return source_refs, formula_lhs, formula_rhs
 
 
+# ---------------------------------------------------------------------------
+# Main parser
+# ---------------------------------------------------------------------------
+
 def parse_claims(response: str) -> list[Claim]:
     """Extract all labelled claims from a model response.
 
-    Skips code blocks (``` fences) and bare table/header lines.
-    Non-[VERIFIED] claims get label + text only.
-    [VERIFIED] claims get source_refs, formula_lhs, formula_rhs.
-    Claims whose formula cannot be extracted have parse_ok=False but are kept.
+    Skips code blocks (``` fences). [VERIFIED] continuation lines (bullet
+    details) are collected as part of the claim text for formula extraction.
 
     Args:
         response: Raw model response string.
@@ -160,22 +282,20 @@ def parse_claims(response: str) -> list[Claim]:
             nxt = lines[j]
             if _LABEL_RE.match(nxt) or not nxt.strip():
                 break
-            full_text += " " + nxt.strip()
+            full_text += "\n" + nxt.strip()
             j += 1
 
         if label == "VERIFIED":
             source_refs, formula_lhs, formula_rhs = _extract_verified_fields(full_text)
             parse_ok = formula_lhs is not None and formula_rhs is not None
-            claims.append(
-                Claim(
-                    label=label,
-                    text=full_text,
-                    source_refs=source_refs,
-                    formula_lhs=formula_lhs,
-                    formula_rhs=formula_rhs,
-                    parse_ok=parse_ok,
-                )
-            )
+            claims.append(Claim(
+                label=label,
+                text=full_text,
+                source_refs=source_refs,
+                formula_lhs=formula_lhs,
+                formula_rhs=formula_rhs,
+                parse_ok=parse_ok,
+            ))
         else:
             claims.append(Claim(label=label, text=full_text))
 

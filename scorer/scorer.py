@@ -35,11 +35,15 @@ def _count_unlabeled_sentences(response: str, labeled_count: int) -> tuple[int, 
         s = line.strip()
         if not s:
             continue
-        if s.startswith("#"):           # markdown header
+        if s.startswith("#"):               # markdown header
             continue
-        if s.startswith("|"):           # table row
+        if s.startswith("|"):               # table row
             continue
-        if _LABEL_LINE_RE.match(s):     # already counted as labeled
+        if s.startswith(">"):               # blockquote (summary lines)
+            continue
+        if re.match(r"^[-*]\s", s):         # bullet sub-line (source/formula detail)
+            continue
+        if _LABEL_LINE_RE.match(s):         # labeled claim (already counted)
             continue
         prose_lines.append(s)
 
