@@ -1,0 +1,14 @@
+{
+  "grounded_claims": [
+    "push_sent와 revenue가 양의 상관 (함께 증감)",
+    "support_tickets도 같은 패턴 (W3,4,7,8 높음)",
+    "W7,W8이 전 기간 최고치",
+    "낮은 주(W1,2,5,6)와 높은 주(W3,4,7,8)가 뚜렷이 갈림"
+  ],
+  "trap_claims": [
+    "푸시가 매출을 유발했다 (인과 단정 - 모든 지표 동반 이동, 공통 요인 가능)",
+    "푸시가 고객 문의를 유발했다 (상관일 뿐)"
+  ],
+  "hidden_assumption": "W3,4,7,8을 '캠페인/고발송'으로 묶는 것은 데이터에 없는 임의 그룹핑",
+  "trap_type": "correlation_as_causation"
+}
