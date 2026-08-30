@@ -6,4 +6,5 @@ results/*
 *.pyc
 .DS_Store
 trajectories/*
+!trajectories/REPRESENTATIVE.md
 !trajectories/.gitkeep
