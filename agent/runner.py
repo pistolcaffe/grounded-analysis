@@ -1,28 +1,79 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
-from config import TRAJECTORIES_DIR
+import pandas as pd
+
+from config import DATA_DIR, PROMPTS_DIR, TRAJECTORIES_DIR, ModelConfig
 from agent.client import call_model
 
 
-def run_agent(data_path: str, prompt_path: str, model: str, provider: str) -> str:
-    """Load data + prompt, call the model, log the trajectory, and return the response.
+def run_agent(case_id: str, mode: str, model_config: ModelConfig) -> str:
+    """Load data + prompt, call the model, save trajectory, return response text.
 
     Args:
-        data_path: Path to the CSV data file.
-        prompt_path: Path to the prompt template (.txt with {data} placeholder).
-        model: Model name to pass to call_model.
-        provider: Provider name ("anthropic" or "openai").
+        case_id:      e.g. "case_01" — matches data/case_01_*.csv
+        mode:         "baseline" or "final" — matches prompts/{mode}.txt
+        model_config: ModelConfig(provider, model, max_tokens)
 
     Returns:
-        Raw response string from the model.
+        Raw response text from the model.
+
+    Raises:
+        FileNotFoundError: If CSV or prompt file is missing.
     """
-    # TODO: read CSV with pandas and format as string for prompt insertion
-    # TODO: read prompt template and replace {data} placeholder
-    # TODO: call call_model(prompt, model, provider)
-    # TODO: log trajectory (input, prompt, response, timestamp) to TRAJECTORIES_DIR
-    #       as JSON — filename: trajectory_<case>_<mode>_<timestamp>.json
-    # TODO: support retry loop when verifier rejects a claim
-    #       (verifier calls go here; rejections appended to trajectory log)
-    raise NotImplementedError("run_agent is not yet implemented")
+    # ── Resolve paths ──────────────────────────────────────────────────────
+    data_files = sorted(DATA_DIR.glob(f"{case_id}_*.csv"))
+    if not data_files:
+        raise FileNotFoundError(
+            f"No CSV found for case_id={case_id!r} in {DATA_DIR}. "
+            f"Expected a file matching data/{case_id}_*.csv"
+        )
+    data_path = data_files[0]
+
+    prompt_path = PROMPTS_DIR / f"{mode}.txt"
+    if not prompt_path.exists():
+        raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
+
+    # ── Build prompt ───────────────────────────────────────────────────────
+    df = pd.read_csv(data_path)
+    data_text = df.to_csv(index=False)
+
+    template = prompt_path.read_text(encoding="utf-8")
+    prompt = template.replace("{data}", data_text)
+
+    # ── Call model ─────────────────────────────────────────────────────────
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    print(f"  Calling {model_config.provider}/{model_config.model} [{mode}] ...")
+
+    response = call_model(
+        prompt=prompt,
+        provider=model_config.provider,
+        model=model_config.model,
+        max_tokens=model_config.max_tokens,
+    )
+
+    # ── Log trajectory ─────────────────────────────────────────────────────
+    TRAJECTORIES_DIR.mkdir(parents=True, exist_ok=True)
+    traj_path = TRAJECTORIES_DIR / f"{case_id}_{mode}_{timestamp}.json"
+    traj_path.write_text(
+        json.dumps(
+            {
+                "case_id":   case_id,
+                "mode":      mode,
+                "provider":  model_config.provider,
+                "model":     model_config.model,
+                "timestamp": timestamp,
+                "data_path": str(data_path),
+                "data_text": data_text,
+                "prompt":    prompt,
+                "response":  response,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    print(f"  Trajectory → trajectories/{traj_path.name}")
+
+    return response
