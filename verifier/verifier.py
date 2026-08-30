@@ -74,15 +74,33 @@ def _within_tolerance(a: float, b: float, tol: float = TOLERANCE) -> bool:
 # VerifyResult
 # ---------------------------------------------------------------------------
 
+def _derive_status(arithmetic_ok: Any, source_ok: Any) -> str:
+    """Map layer results to a three-way status string.
+
+    "failed"  — at least one layer explicitly failed (wrong value or mismatch)
+    "unknown" — no layer failed, but arithmetic could not be evaluated
+    "passed"  — arithmetic confirmed correct; source confirmed or unparseable
+    """
+    if arithmetic_ok is False or source_ok is False:
+        return "failed"
+    if arithmetic_ok == "unknown":
+        return "unknown"
+    return "passed"
+
+
 @dataclass
 class VerifyResult:
     claim: Claim
-    passed: bool
+    status: str                 # "passed" | "failed" | "unknown"
     arithmetic_ok: Any          # True | False | "unknown"
     source_ok: Any              # True | False | "unknown"
     expected: Optional[float]   # LHS evaluated (normalised to same scale as RHS)
     got: Optional[float]        # RHS numeric value
     note: str
+
+    @property
+    def passed(self) -> bool:
+        return self.status == "passed"
 
 
 # ---------------------------------------------------------------------------
@@ -182,17 +200,18 @@ def verify_claim(claim: Claim, df: pd.DataFrame) -> VerifyResult:
     Layer B (source): checks every (week, column, value) ref parsed from the
     source field against the raw DataFrame.
 
-    passed=True when:
-      - arithmetic_ok is True, AND
-      - source_ok is True or "unknown" (unknown = couldn't fully parse source,
-        but no mismatch detected; decision falls back to layer A alone)
+    Status rules:
+      "passed"  — arithmetic confirmed correct; source confirmed or unparseable
+      "failed"  — arithmetic wrong OR source value mismatches raw data
+      "unknown" — no failure detected but arithmetic could not be evaluated
+                  (e.g. Pearson correlation formula — outside arithmetic parser scope)
 
     Args:
         claim: A Claim with label == "VERIFIED".
         df: Original dataset as a DataFrame (must have a 'week' column).
 
     Returns:
-        VerifyResult with full breakdown of both layers.
+        VerifyResult with status, per-layer breakdown, and diagnostic note.
     """
     arithmetic_ok, expected, got, a_notes = _check_arithmetic(claim)
     source_ok, s_notes = _check_source(claim, df)
@@ -200,12 +219,9 @@ def verify_claim(claim: Claim, df: pd.DataFrame) -> VerifyResult:
     all_notes = a_notes + s_notes
     note = "; ".join(all_notes) if all_notes else "ok"
 
-    # passed = A must be True; B must be True or unknown (unknown → A decides)
-    passed = (arithmetic_ok is True) and (source_ok is not False)
-
     return VerifyResult(
         claim=claim,
-        passed=passed,
+        status=_derive_status(arithmetic_ok, source_ok),
         arithmetic_ok=arithmetic_ok,
         source_ok=source_ok,
         expected=expected,
