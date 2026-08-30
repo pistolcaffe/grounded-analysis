@@ -8,3 +8,4 @@ results/*
 trajectories/*
 !trajectories/REPRESENTATIVE.md
 !trajectories/.gitkeep
+!trajectories/case_01_final_20260830T204623Z.json
