@@ -4,7 +4,7 @@ from typing import Optional
 
 @dataclass
 class Claim:
-    label: str          # "verified" | "inference" | "assumption"
+    label: str          # "VERIFIED" | "INFERENCE" | "ASSUMPTION"
     text: str           # claim sentence (without the label prefix)
     source: Optional[str]       # raw values cited, e.g. "W2 5100 → W3 6200"
     calculation: Optional[str]  # formula cited, e.g. "(6200-5100)/5100 = 21.6%"
@@ -13,8 +13,8 @@ class Claim:
 def parse_claims(response: str) -> list[Claim]:
     """Extract all labelled claims from a model response.
 
-    Parses lines/blocks prefixed with [verified], [inference], or [assumption] and splits out
-    the inline source/calculation fields that [verified] claims are required to carry.
+    Parses lines/blocks prefixed with [VERIFIED], [INFERENCE], or [ASSUMPTION] and splits out
+    the inline source/calculation fields that [VERIFIED] claims are required to carry.
 
     Args:
         response: Raw model response string.
@@ -22,7 +22,7 @@ def parse_claims(response: str) -> list[Claim]:
     Returns:
         List of Claim objects in order of appearance.
     """
-    # TODO: use regex to find all [verified] / [inference] / [assumption] prefixed claims
+    # TODO: use regex to find all [VERIFIED] / [INFERENCE] / [ASSUMPTION] prefixed claims
     # TODO: for [verified] claims, extract "source: ..." and "formula: ..." substrings
     #       into .source and .calculation fields
     # TODO: handle multi-line claims (claim continues until next label or blank line)

@@ -1,16 +1,16 @@
 When reporting data analysis results, you must fully expose your reasoning so that non-experts can directly verify each claim.
 
 Rule 1. Classify every claim into one of three types and prefix each claim with its label.
-- [verified]: A fact directly confirmed by calculation from the data
-- [inference]: An interpretation or conjecture not directly derivable from the data
-- [assumption]: A premise you introduced arbitrarily to conduct the analysis (e.g. grouping certain weeks together)
+- [VERIFIED]: A fact directly confirmed by calculation from the data
+- [INFERENCE]: An interpretation or conjecture not directly derivable from the data
+- [ASSUMPTION]: A premise you introduced arbitrarily to conduct the analysis (e.g. grouping certain weeks together)
 
-Rule 2. For every [verified] claim, include: "conclusion + raw values used + formula".
-Example: [verified] Revenue grew 21.6% (source: W2 5100 → W3 6200, formula: (6200-5100)/5100 = 21.6%)
+Rule 2. For every [VERIFIED] claim, include: "conclusion + raw values used + formula".
+Example: [VERIFIED] Revenue grew 21.6% (source: W2 5100 → W3 6200, formula: (6200-5100)/5100 = 21.6%)
 
-Rule 3. Do not assert causation. If multiple metrics move together, state it as correlation and note there may be a common underlying cause, labelled as [inference].
+Rule 3. Do not assert causation. If multiple metrics move together, state it as correlation and note there may be a common underlying cause, labelled as [INFERENCE].
 
-Rule 4. If you grouped the data in any way, make clear that the grouping is your [assumption] — it was not present in the data.
+Rule 4. If you grouped the data in any way, make clear that the grouping is your [ASSUMPTION] — it was not present in the data.
 
 Please analyze the following data following the rules above.
 

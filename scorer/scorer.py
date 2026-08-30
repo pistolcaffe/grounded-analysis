@@ -17,16 +17,16 @@ def score(response: str, raw_data: pd.DataFrame) -> dict[str, Any]:
     Returns:
         Dict with keys:
           - separation_rate (float): labelled claims / total claims
-          - reverify_rate (float): verifier-passed [verified] claims / total [verified] claims
+          - reverify_rate (float): verifier-passed [VERIFIED] claims / total [VERIFIED] claims
           - total_claims (int)
           - labelled_claims (int)
           - verified_claims (int)
           - verified_passed (int)
     """
     # TODO: call parse_claims(response) to count total vs labelled claims
-    # TODO: call verify_response(response, raw_data) to get pass/fail per [verified] claim
+    # TODO: call verify_response(response, raw_data) to get pass/fail per [VERIFIED] claim
     # TODO: compute separation_rate = labelled / total
-    # TODO: compute reverify_rate = passed / total [verified]
+    # TODO: compute reverify_rate = passed / total [VERIFIED]
     # TODO: return full metrics dict
     raise NotImplementedError("score is not yet implemented")
 
