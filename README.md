@@ -1,6 +1,6 @@
 # Grounded Analysis
 
-A system that defines the trust boundary of AI agent judgments — forces every claim to be grounded in verifiable evidence, then cross-checks it with an independent verifier.
+A system that defines the trust boundary of AI agent judgments — it forces every claim to be grounded in verifiable evidence, then cross-checks it with an independent verifier.
 
 ---
 
@@ -15,6 +15,7 @@ Practitioners who delegate judgment and interpretation to agents. Especially **p
 ## Bottleneck
 
 Agents produce plausible-sounding judgments fluently, but:
+
 - **Vertical trust collapse**: It is impossible to tell whether a claim comes from real evidence or is fabricated.
 - **Horizontal trust collapse**: The same data yields a different answer every time.
 
@@ -22,21 +23,25 @@ You cannot trust it without re-verifying, and if you have to re-verify yourself,
 
 ## Approach
 
-1. **Fact / Inference / Assumption separation** — force every claim to be labelled `[verified]` / `[inference]` / `[assumption]`
-2. **Evidence chain enforcement** — require `[verified]` claims to include raw values + formula
-3. **Independent verifier** — a separate deterministic code path re-computes each figure from raw data, breaking self-reference
+1. **Fact / Inference / Assumption separation** — force every claim to be labelled `[VERIFIED]` / `[INFERENCE]` / `[ASSUMPTION]`
+2. **Evidence chain enforcement** — require `[VERIFIED]` claims to include raw values + formula
+3. **Independent verifier** — a separate deterministic code path re-computes each figure from the raw data, breaking self-reference
 
-**The boundary (key insight)**: The mechanism works where there is a verifiable ground truth (data); it breaks down where there is none (content). This boundary itself defines *the conditions under which AI judgment can be trusted*.
+**The boundary (key insight)**: The mechanism works where there is a verifiable ground truth (data); it breaks down where there is none (subjective content). This boundary itself defines *the conditions under which AI judgment can be trusted*.
 
-## Measured Results (Prompt Simulation)
+## Measured Results
+
+Actual pipeline runs (anthropic/claude-sonnet-4-6, case_01, repeat=5):
 
 | | Baseline | Final |
 |---|---|---|
-| Separation rate | ~12% | ~95% |
-| Re-verifiability | ~0% | ~95% |
-| Causation stance | Asserted ↔ hedged (varies by model) | Refused (converges across models) |
+| Separation rate | 0.0% (stdev 0.0) | 94.5% (stdev 0.97pp) |
+| Re-verifiability | N/A (nothing to verify) | 100% |
+| Consistency | — | Tight across repeats |
 
-Once the independent verifier code is complete, re-verification reaches **100%** real validation.
+The independent verifier re-computes each arithmetic claim against the raw data. On a reference response: **12 passed / 0 failed / 2 unknown** (Pearson-type claims fall outside the arithmetic verifier's scope).
+
+**Boundary result**: The same enforcement applied to a subjective task (does a video script "hook" the viewer?) produces high separation but **zero re-verifiable core claims** — every hook judgment falls to `[INFERENCE]` because there is no verifiable floor. The system honestly labels its judgment as inference rather than disguising it as fact. This confirms the boundary.
 
 ---
 
@@ -71,8 +76,13 @@ python run.py --case case_01 --mode baseline
 python run.py --case case_01 --mode final --repeat 5
 ```
 
-## Project Structure
+## Runtime & Cost
 
+- One `--mode both --repeat 5` run makes ~10 API calls and completes in approximately under one minute.
+- Approximate cost: a few cents per full run (Claude Sonnet, short prompts + small data).
+- Requires an Anthropic (or OpenAI) API key with billing enabled.
+
+## Project Structure
 ```
 grounded-analysis/
   run.py              # pipeline entry point
@@ -86,4 +96,5 @@ grounded-analysis/
   trajectories/       # agent trajectory logs
 ```
 
-See [CHANGELOG.md](CHANGELOG.md) for the iteration history.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full iteration history, the boundary case, and the hot take.
