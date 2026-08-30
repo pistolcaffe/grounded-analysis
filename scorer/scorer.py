@@ -17,16 +17,16 @@ def score(response: str, raw_data: pd.DataFrame) -> dict[str, Any]:
     Returns:
         Dict with keys:
           - separation_rate (float): labelled claims / total claims
-          - reverify_rate (float): verifier-passed [검증됨] claims / total [검증됨] claims
+          - reverify_rate (float): verifier-passed [verified] claims / total [verified] claims
           - total_claims (int)
           - labelled_claims (int)
           - verified_claims (int)
           - verified_passed (int)
     """
     # TODO: call parse_claims(response) to count total vs labelled claims
-    # TODO: call verify_response(response, raw_data) to get pass/fail per [검증됨] claim
+    # TODO: call verify_response(response, raw_data) to get pass/fail per [verified] claim
     # TODO: compute separation_rate = labelled / total
-    # TODO: compute reverify_rate = passed / total [검증됨]
+    # TODO: compute reverify_rate = passed / total [verified]
     # TODO: return full metrics dict
     raise NotImplementedError("score is not yet implemented")
 
@@ -63,7 +63,7 @@ def append_changelog(
         decision: Outcome summary (kept / removed / learning).
         changelog_path: Path to CHANGELOG.md.
     """
-    # TODO: format metrics into "분리 X% / 재검증 Y%" string
+    # TODO: format metrics into "separation X% / reverify Y%" string
     # TODO: append "| iteration_name | tried | metrics_str | decision |" row to
     #       the markdown table in changelog_path
     raise NotImplementedError("append_changelog is not yet implemented")
