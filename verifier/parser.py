@@ -7,7 +7,7 @@ _COL_PAT = "|".join(KNOWN_COLUMNS)
 
 _LABEL_RE = re.compile(r"^\s*\[(VERIFIED|INFERENCE|ASSUMPTION)\]\s*(.*)", re.IGNORECASE)
 _PAREN_RE = re.compile(r"\((.+)\)\s*\.?\s*$", re.DOTALL)
-_CALC_SPLIT_RE = re.compile(r";\s*calculation\s*:", re.IGNORECASE)
+_CALC_SPLIT_RE = re.compile(r";\s*(?:calculation|formula)\s*:", re.IGNORECASE)
 _SOURCE_PREFIX_RE = re.compile(r"^source\s*:\s*", re.IGNORECASE)
 
 # Source ref patterns
@@ -192,6 +192,9 @@ def _extract_verified_fields(
 
     Format A — Gemini inline parenthetical (single line):
         [VERIFIED] Text (source: W2 5100→W3 6200; calculation: (6200-5100)/5100 = 21.6%)
+        [VERIFIED] Text (Source: ...; Formula: (8575-5150)/5150 = 66.5%)
+        The "calculation"/"formula" label is matched case-insensitively; the
+        LHS may be a raw arithmetic expression or an aggregate (sum/average).
 
     Format B — Claude multi-line bullet (continuation lines):
         [VERIFIED] Text
@@ -210,7 +213,11 @@ def _extract_verified_fields(
         source_text = _SOURCE_PREFIX_RE.sub("", parts[0])
         source_refs = _parse_source_refs(source_text)
         if len(parts) > 1:
-            formula_lhs, formula_rhs = _parse_calculation_multi(parts[1])
+            # Trailing "; ..." after the formula chain is usually a separate
+            # footnote (e.g. a second, unrelated fact), not part of this
+            # calculation — keep only the primary expr = ... = result chain.
+            calc_segment = parts[1].split(";", 1)[0]
+            formula_lhs, formula_rhs = _parse_calculation_multi(calc_segment)
 
     # ── Format B: explicit "- Source:" / "- Formula:" bullet ─────────────
     if formula_lhs is None:
