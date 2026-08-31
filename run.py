@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,7 @@ from config import (
 )
 from agent.runner import run_agent
 from scorer.scorer import append_changelog, consistency, score
+from verifier.verifier import verify_response
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
@@ -52,8 +54,14 @@ def parse_args() -> argparse.Namespace:
         help=f"Model ID (default: {MODEL_NAME})",
     )
     parser.add_argument(
-        "--no-changelog", action="store_true",
-        help="Skip CHANGELOG.md append even when --repeat > 1",
+        "--write-changelog", action="store_true", default=False,
+        help="Append the run's results to CHANGELOG.md (default: off — "
+             "CHANGELOG.md is left untouched unless this is passed)",
+    )
+    parser.add_argument(
+        "--show-response", action="store_true", default=False,
+        help="Print each run's full response body to the terminal, just "
+             "before its score summary (default: off)",
     )
     return parser.parse_args()
 
@@ -66,12 +74,58 @@ def _fmt(v: float | None, pct: bool = True) -> str:
     return f"{v * 100:.1f}%" if pct else f"{v:.4f}"
 
 
+_LABEL_COLORS = {
+    "VERIFIED": "\033[32m",    # green
+    "INFERENCE": "\033[33m",   # yellow
+    "ASSUMPTION": "\033[31m",  # red
+}
+_LABEL_RESET = "\033[0m"
+_LABEL_RE = re.compile(r"\[(VERIFIED|INFERENCE|ASSUMPTION)\]")
+
+
+def _highlight_labels(text: str) -> str:
+    return _LABEL_RE.sub(
+        lambda m: f"{_LABEL_COLORS[m.group(1)]}[{m.group(1)}]{_LABEL_RESET}",
+        text,
+    )
+
+
+def _print_response(response: str) -> None:
+    print(f"\n  {'┄' * 53}")
+    print(_highlight_labels(response))
+    print(f"  {'┄' * 53}")
+
+
+_STATUS_COLORS = {
+    "passed": "\033[32m",   # green
+    "failed": "\033[31m",   # red
+    "unknown": "\033[33m",  # yellow
+}
+
+
+def _print_verification(verify_results: list) -> None:
+    counts = {"passed": 0, "failed": 0, "unknown": 0}
+
+    print("\n  === Independent verifier ===")
+    for r in verify_results:
+        counts[r.status] += 1
+        summary = r.claim.text.splitlines()[0].strip()
+        color = _STATUS_COLORS.get(r.status, "")
+        print(f"  [{color}{r.status:<7}{_LABEL_RESET}] {summary}")
+
+    print(
+        f"  Verifier: passed {counts['passed']} / "
+        f"failed {counts['failed']} / unknown {counts['unknown']}"
+    )
+
+
 def _run_mode(
     case_id: str,
     mode: str,
     repeat: int,
     model_config: ModelConfig,
     df: pd.DataFrame,
+    show_response: bool = False,
 ) -> tuple[list[dict], list[str]]:
     """Run one mode `repeat` times. Returns (metrics_list, responses)."""
     metrics_list: list[dict] = []
@@ -88,6 +142,10 @@ def _run_mode(
         metrics = score(response, df)
         responses.append(response)
         metrics_list.append(metrics)
+
+        if show_response:
+            _print_response(response)
+            _print_verification(verify_response(response, df))
 
         sep = _fmt(metrics["separation_rate"])
         rev = _fmt(metrics["reverify_rate"])
@@ -183,7 +241,10 @@ def main() -> None:
     all_metrics: dict[str, list[dict]] = {}
 
     for mode in modes:
-        metrics_list, _ = _run_mode(args.case, mode, args.repeat, model_config, df)
+        metrics_list, _ = _run_mode(
+            args.case, mode, args.repeat, model_config, df,
+            show_response=args.show_response,
+        )
         all_metrics[mode] = metrics_list
         _print_summary(mode, metrics_list)
         _save_results(args.case, mode, metrics_list)
@@ -191,8 +252,8 @@ def main() -> None:
     if args.mode == "both":
         _print_comparison(all_metrics["baseline"], all_metrics["final"])
 
-    # Append to CHANGELOG when multi-run and not suppressed
-    if args.repeat > 1 and not args.no_changelog:
+    # Append to CHANGELOG only when explicitly requested
+    if args.write_changelog:
         for mode, metrics_list in all_metrics.items():
             last = metrics_list[-1]
             append_changelog(
