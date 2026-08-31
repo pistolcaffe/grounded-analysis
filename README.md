@@ -115,3 +115,5 @@ grounded-analysis/
 
 
 See [CHANGELOG.md](CHANGELOG.md) for the full iteration history, the boundary case, and the hot take.
+
+See [REPRODUCTION.md](REPRODUCTION.md) for setup and reproduction from a clean environment.
