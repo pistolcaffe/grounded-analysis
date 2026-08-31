@@ -114,6 +114,8 @@ grounded-analysis/
 ```
 
 
-See [CHANGELOG.md](CHANGELOG.md) for the full iteration history, the boundary case, and the hot take.
-
-See [REPRODUCTION.md](REPRODUCTION.md) for setup and reproduction from a clean environment.
+## Deliverables
+- **Solution code & changelog** — this repository; iteration history in [CHANGELOG.md](CHANGELOG.md)
+- **Reproduction guide** — [REPRODUCTION.md](REPRODUCTION.md)
+- **Agent trajectory** — [trajectories/REPRESENTATIVE.md](trajectories/REPRESENTATIVE.md), with its raw source log `trajectories/case_01_final_20260830T204623Z.json`
+- **Solution video** — [link to be added]
