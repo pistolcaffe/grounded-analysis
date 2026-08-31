@@ -63,18 +63,35 @@ cp .env.example .env
 ## Usage
 
 ```bash
+## Usage
+
+```bash
 # Help
 python run.py --help
 
-# Run baseline + final 3 times each and score
-python run.py --case case_01 --mode both --repeat 3
+# Run baseline + final and score (default repeat=3)
+python run.py --case case_01 --mode both --repeat 5
 
 # Baseline only
 python run.py --case case_01 --mode baseline
 
 # Final only, 5 repetitions
 python run.py --case case_01 --mode final --repeat 5
+
+# Show the full labelled response + independent verifier results
+python run.py --case case_01 --mode final --show-response
+
+# Also write results into CHANGELOG.md (off by default)
+python run.py --case case_01 --mode both --write-changelog
 ```
+
+### Flags
+
+- `--case` — dataset case ID (e.g. `case_01`)
+- `--mode` — `baseline`, `final`, or `both`
+- `--repeat` — number of runs per mode, for consistency measurement (default 3)
+- `--show-response` — print the agent's full labelled output and the verifier's per-claim verdicts
+- `--write-changelog` — append run results to CHANGELOG.md (disabled by default so the curated changelog stays clean)
 
 ## Runtime & Cost
 
