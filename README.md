@@ -118,4 +118,4 @@ grounded-analysis/
 - **Solution code & changelog** — this repository; iteration history in [CHANGELOG.md](CHANGELOG.md)
 - **Reproduction guide** — [REPRODUCTION.md](REPRODUCTION.md)
 - **Agent trajectory** — [trajectories/REPRESENTATIVE.md](trajectories/REPRESENTATIVE.md), with its raw source log `trajectories/case_01_final_20260830T204623Z.json`
-- **Solution video** — [link to be added]
+- **Solution video** — [youtube](https://www.youtube.com/watch?v=u_TAU05aULM)
